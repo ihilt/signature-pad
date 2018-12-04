@@ -252,14 +252,13 @@ function SignaturePad (selector, options) {
     if (!!e) {
       drawLine(e, 1)
     } else {
-      if (touchable) {
-        canvas.each(function () {
-          this.removeEventListener('touchmove', drawLine)
-          // this.removeEventListener('MSPointerMove', drawLine)
-        })
-      } else {
-        canvas.unbind('mousemove.signaturepad')
-      }
+      // For touch devices
+      canvas.each(function () {
+        this.removeEventListener('touchmove', drawLine)
+      })
+      // For mouse
+      canvas.unbind('mousemove.signaturepad')
+
 
       if (output.length > 0 && settings.onDrawEnd && typeof settings.onDrawEnd === 'function')
         settings.onDrawEnd.apply(self)
@@ -339,12 +338,10 @@ function SignaturePad (selector, options) {
    * @param {Object} touchObject The object context registered to the event; canvas
    */
   function startDrawing (e, touchObject) {
-    if (touchable) {
-      touchObject.addEventListener('touchmove', onMouseMove, false)
-      // touchObject.addEventListener('MSPointerMove', onMouseMove, false)
-    } else {
-      canvas.bind('mousemove.signaturepad', onMouseMove)
-    }
+    // For touch devices
+    touchObject.addEventListener('touchmove', onMouseMove, false)
+    // For mouse
+    canvas.bind('mousemove.signaturepad', onMouseMove)
 
     // Draws a single point on initial mouse down, for people with periods in their name
     drawLine(e, 1)
@@ -363,9 +360,6 @@ function SignaturePad (selector, options) {
         this.removeEventListener('touchend', stopDrawingWrapper)
         this.removeEventListener('touchcancel', stopDrawingWrapper)
         this.removeEventListener('touchmove', drawLine)
-        // this.removeEventListener('MSPointerUp', stopDrawingWrapper)
-        // this.removeEventListener('MSPointerCancel', stopDrawingWrapper)
-        // this.removeEventListener('MSPointerMove', drawLine)
       }
 
       if (this.ontouchstart)
@@ -397,41 +391,33 @@ function SignaturePad (selector, options) {
 
     // Closes open keyboards to free up space
     $('input').blur();
+    // For touch devices
+    canvas.each(function () {
+      this.addEventListener('touchend', stopDrawingWrapper, false)
+      this.addEventListener('touchcancel', stopDrawingWrapper, false)
+    })
+    // canvas.unbind('mousedown.signaturepad')
+    // For mouse
+    $(document).bind('mouseup.signaturepad', function () {
+      if (mouseButtonDown) {
+        stopDrawing()
+        clearMouseLeaveTimeout()
+      }
+    })
+    canvas.bind('mouseleave.signaturepad', function (e) {
+      if (mouseButtonDown) stopDrawing(e)
 
-    if (typeof e.targetTouches !== 'undefined')
-      touchable = true
-
-    if (touchable) {
-      canvas.each(function () {
-        this.addEventListener('touchend', stopDrawingWrapper, false)
-        this.addEventListener('touchcancel', stopDrawingWrapper, false)
-        // this.addEventListener('MSPointerUp', stopDrawingWrapper, false)
-        // this.addEventListener('MSPointerCancel', stopDrawingWrapper, false)
-      })
-
-      canvas.unbind('mousedown.signaturepad')
-    } else {
-      $(document).bind('mouseup.signaturepad', function () {
-        if (mouseButtonDown) {
+      if (mouseButtonDown && !mouseLeaveTimeout) {
+        mouseLeaveTimeout = setTimeout(function () {
           stopDrawing()
           clearMouseLeaveTimeout()
-        }
-      })
-      canvas.bind('mouseleave.signaturepad', function (e) {
-        if (mouseButtonDown) stopDrawing(e)
+        }, 500)
+      }
+    })
 
-        if (mouseButtonDown && !mouseLeaveTimeout) {
-          mouseLeaveTimeout = setTimeout(function () {
-            stopDrawing()
-            clearMouseLeaveTimeout()
-          }, 500)
-        }
-      })
-
-      canvas.each(function () {
-        this.ontouchstart = null
-      })
-    }
+    canvas.each(function () {
+      this.ontouchstart = null
+    })
   }
 
   /**
@@ -445,23 +431,22 @@ function SignaturePad (selector, options) {
     clearCanvas()
 
     canvas.each(function () {
-      this.ontouchstart = function (e) {
+      this.addEventListener('touchstart', function (e) {
         e.preventDefault()
         mouseButtonDown = true
         initDrawEvents(e)
         startDrawing(e, this)
-      }
+      });
     })
 
     canvas.bind('mousedown.signaturepad', function (e) {
       e.preventDefault()
-
       // Only allow left mouse clicks to trigger signature drawing
       if (e.which > 1) return false
 
       mouseButtonDown = true
       initDrawEvents(e)
-      startDrawing(e)
+      startDrawing(e, this)
     })
 
     $(settings.clear, context).bind('click.signaturepad', function (e) { e.preventDefault(); clearCanvas() })
@@ -650,12 +635,38 @@ function SignaturePad (selector, options) {
   }
 
   /**
+   * An extracted version of Modernizr's touch enabled browser detection
+   * https://stackoverflow.com/questions/4817029/whats-the-best-way-to-detect-a-touch-screen-device-using-javascript/4819886#4819886
+   *
+   * @private
+   */
+  function is_touch_device() {
+    var prefixes = ' -webkit- -moz- -o- -ms- '.split(' ');
+    var mq = function(query) {
+      return window.matchMedia(query).matches;
+    }
+
+    if (('ontouchstart' in window) || window.DocumentTouch && document instanceof DocumentTouch) {
+      return true;
+    }
+
+    // include the 'heartz' as a way to have a non matching MQ to help terminate the join
+    // https://git.io/vznFH
+    var query = ['(', prefixes.join('touch-enabled),('), 'heartz', ')'].join('');
+    return mq(query);
+  }
+
+  /**
    * Initialisation function, called immediately after all declarations
    * Technically public, but only should be used internally
    *
    * @private
    */
   function init () {
+    if (is_touch_device()) {
+      touchable = true;
+    }
+
     // Fixes the jQuery.fn.offset() function for Mobile Safari Browsers i.e. iPod Touch, iPad and iPhone
     // https://gist.github.com/661844
     // http://bugs.jquery.com/ticket/6446

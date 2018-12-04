@@ -2,6 +2,7 @@
   "predef": [
     "FlashCanvas"
     , "typeIt"
+    , "DocumentTouch"
   ]
 
   , "browser": true
